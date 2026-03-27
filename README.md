@@ -240,6 +240,17 @@ database:
     username: "root"
     password: "password"
     charset: "utf8mb4"
+    maxIdleConn: 10
+    maxOpenConn: 100
+    logger:
+      ignoreRecordNotFoundError: true  # 忽略记录未找到错误
+      colorful: false                 # 禁用彩色日志输出
+    slave:
+      maxIdleConn: 5
+      maxOpenConn: 50
+      connStrs:
+        - "user:pass@slave1:3306/dbname"
+        - "user:pass@slave2:3306/dbname"
     
   postgresql:
     host: "localhost"
@@ -254,6 +265,8 @@ database:
     database: "myapp"
     timeout: 30s
 ```
+
+**🔧 新特性**: MySQL 连接器现在支持可配置的日志选项，可以控制是否忽略记录未找到错误和彩色日志输出。
 
 ### 对象存储配置
 
@@ -392,6 +405,12 @@ MIT License - 详见 [LICENSE](LICENSE) 文件
 [@joepeak](https://github.com/joepeak)
 
 ## 更新日志
+
+### v0.4.0
+- 🔧 **优化**: MySQL 连接器支持可配置的日志选项
+- 📝 新增 `ignoreRecordNotFoundError` 和 `colorful` 配置项
+- 🛠️ 移除硬编码的日志配置，提升灵活性
+- 📚 完善 MySQL 配置文档和使用示例
 
 ### v0.3.0
 - ✨ 新增 MongoDB 支持

@@ -18,6 +18,10 @@ type MysqlConf struct {
 	ConnStr     string `mapstructure:"connStr"`
 	MaxIdleConn int    `mapstructure:"maxIdleConn"`
 	MaxOpenConn int    `mapstructure:"maxOpenConn"`
+	Logger      struct {
+		IgnoreRecordNotFoundError bool `mapstructure:"ignoreRecordNotFoundError"`
+		Colorful                  bool `mapstructure:"colorful"`
+	} `mapstructure:"logger"`
 	Slave       struct {
 		MaxIdleConn int      `mapstructure:"maxIdleConn"`
 		MaxOpenConn int      `mapstructure:"maxOpenConn"`
@@ -40,8 +44,8 @@ func InitMysqlDb(conf MysqlConf) (*gorm.DB, error) {
 			logger.Config{
 				SlowThreshold:             time.Second,  // 慢SQL阈值
 				LogLevel:                  logger.Error, // 日志级别
-				IgnoreRecordNotFoundError: true,         // 忽略ErrRecordNotFound错误
-				Colorful:                  false,        // 禁用彩色打印
+				IgnoreRecordNotFoundError: conf.Logger.IgnoreRecordNotFoundError, // 从配置读取
+				Colorful:                  conf.Logger.Colorful,                  // 从配置读取
 			},
 		),
 	})
