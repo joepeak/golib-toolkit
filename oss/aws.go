@@ -13,7 +13,7 @@ import (
 	"github.com/spf13/viper"
 
 	_ "github.com/joepeak/golib-conf"
-	"github.com/joepeak/golib-toolkit/convert"
+	"github.com/joepeak/golib-util/convert"
 )
 
 const (

@@ -1,4 +1,4 @@
-module github.com/joepeak/golib-toolkit
+module github.com/joepeak/golib-util
 
 go 1.22.0
 
