@@ -340,8 +340,9 @@ func (lm *RedisLockManager) LockMany(ctx context.Context, keys []string, opts ..
 			// 释放已获取的锁
 			lm.UnlockMany(ctx, locks)
 			return nil, firstErr
+		} else {
+			locks[key] = lock
 		}
-		locks[key] = lock
 	}
 
 	return locks, nil

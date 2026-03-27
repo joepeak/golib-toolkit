@@ -12,10 +12,10 @@ import (
 
 // Client Redis 客户端包装器
 type Client struct {
-	cache     Cache[any]
-	lockMgr   LockManager
-	client    redis.UniversalClient
-	config    *RedisConfig
+	cache   Cache[any]
+	lockMgr LockManager
+	client  redis.UniversalClient
+	config  *RedisConfig
 }
 
 // NewClient 创建新的 Redis 客户端
@@ -78,6 +78,38 @@ func (c *Client) AutoLock(key string) DistributedLock {
 	)
 }
 
+// SimpleGet 简单获取缓存（无context）
+func (c *Client) SimpleGet(key string) (any, error) {
+	return c.cache.Get(context.Background(), key)
+}
+
+// SimpleSet 简单设置缓存（无context）
+func (c *Client) SimpleSet(key string, value any, ttl time.Duration) error {
+	return c.cache.Set(context.Background(), key, &value, ttl)
+}
+
+// SimpleDelete 简单删除缓存（无context）
+func (c *Client) SimpleDelete(key string) error {
+	return c.cache.Delete(context.Background(), key)
+}
+
+// SimpleExists 简单检查缓存是否存在（无context）
+func (c *Client) SimpleExists(key string) (bool, error) {
+	return c.cache.Exists(context.Background(), key)
+}
+
+// SimpleLock 简单获取锁（无context）
+func (c *Client) SimpleLockNoCtx(key string) error {
+	lock := c.SimpleLock(key)
+	return lock.Lock(context.Background())
+}
+
+// SimpleUnlock 简单释放锁（无context）
+func (c *Client) SimpleUnlockNoCtx(key string) error {
+	lock := c.SimpleLock(key)
+	return lock.Unlock(context.Background())
+}
+
 // RawClient 获取原始 Redis 客户端
 func (c *Client) RawClient() redis.UniversalClient {
 	return c.client
@@ -134,13 +166,13 @@ func createRedisClient(config *RedisConfig) (redis.UniversalClient, error) {
 
 	opts := &redis.Options{
 		Addr:         config.Addr,
-		Password:      config.Password,
-		Username:      config.Username,
-		DB:            config.DB,
-		TLSConfig:     getTLSConfig(config.EnabledTLS),
-		PoolSize:      config.PoolSize,
-		MinIdleConns:  config.MinIdleConns,
-		MaxRetries:    config.MaxRetries,
+		Password:     config.Password,
+		Username:     config.Username,
+		DB:           config.DB,
+		TLSConfig:    getTLSConfig(config.EnabledTLS),
+		PoolSize:     config.PoolSize,
+		MinIdleConns: config.MinIdleConns,
+		MaxRetries:   config.MaxRetries,
 	}
 
 	return redis.NewClient(opts), nil

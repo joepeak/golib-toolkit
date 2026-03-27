@@ -1,73 +1,53 @@
 # Redis 缓存和分布式锁 - 简化使用示例
 
-## 🎯 优化点 1: 消除类型断言
+## 🎯 优化点 1: 无 Context 的便捷方法
 
-### 原来的使用方式（需要类型断言）
+### 原来的使用方式（需要 context）
 
 ```go
-// ❌ 需要类型断言的用法
-var cachedUser User
+// ❌ 需要传入 context 的用法
+ctx := context.Background()
 value, err := cache.Get(ctx, "user:1")
 if err != nil {
     log.Printf("Get failed: %v", err)
 } else {
-    // 类型断言 - 容易出错
     if u, ok := value.(*User); ok {
-        cachedUser = *u
-        fmt.Printf("Cached user: %+v\n", cachedUser)
+        fmt.Printf("User: %+v\n", *u)
     }
 }
+
+err = cache.Set(ctx, "user:1", user, 10*time.Minute)
+err = lock.Lock(ctx)
+defer lock.Unlock(ctx)
 ```
 
-### 优化后的使用方式（类型安全）
+### 优化后的使用方式（无 context）
 
 ```go
-// ✅ 类型安全的用法（推荐）
+// ✅ 无 context 的用法（推荐）
 client, _ := redis.NewClient(&redis.RedisConfig{
     Addr: "localhost:6379",
 })
 
-// 方式1: 使用基础缓存（需要类型断言）
-cache := client.Cache()
-user := &User{ID: 1, Name: "Alice", Email: "alice@example.com"}
-err = cache.Set(ctx, "user:1", user, 10*time.Minute)
-
-// 获取时仍需要类型断言
-value, err := cache.Get(ctx, "user:1")
-if err == nil {
+// 简单的缓存操作（自动使用 context.Background()）
+value, err := client.SimpleGet("user:1")
+if err != nil {
+    log.Printf("Get failed: %v", err)
+} else {
+    // 仍需要类型断言，但代码更简洁
     if u, ok := value.(*User); ok {
-        cachedUser := *u
-        fmt.Printf("User: %+v\n", cachedUser)
+        fmt.Printf("User: %+v\n", *u)
     }
 }
 
-// 方式2: 创建专用缓存（推荐）
-userCache := redis.NewTypedCache[User](client.RawClient())
+// 设置缓存
+err = client.SimpleSet("user:1", user, 10*time.Minute)
 
-// 设置和获取都是类型安全的
-user := &User{ID: 1, Name: "Alice", Email: "alice@example.com"}
-err = userCache.Set(ctx, "user:1", user, 10*time.Minute)
+// 删除缓存
+err = client.SimpleDelete("user:1")
 
-// 获取时直接返回 *User，无需类型断言
-cachedUser, err := userCache.Get(ctx, "user:1")
-if err == nil {
-    fmt.Printf("User: %+v\n", *cachedUser) // 直接使用，无需断言
-}
-
-// 批量操作也是类型安全的
-users := map[string]*User{
-    "user:2": {ID: 2, Name: "Bob", Email: "bob@example.com"},
-    "user:3": {ID: 3, Name: "Charlie", Email: "charlie@example.com"},
-}
-err = userCache.SetMany(ctx, users, 5*time.Minute)
-
-// 批量获取直接返回 map[string]*User
-cachedUsers, err := userCache.GetMany(ctx, []string{"user:1", "user:2", "user:3"})
-if err == nil {
-    for key, user := range cachedUsers {
-        fmt.Printf("%s: %+v\n", key, *user) // 直接使用，无需断言
-    }
-}
+// 检查是否存在
+exists, err := client.SimpleExists("user:1")
 ```
 
 ## 🎯 优化点 2: 简化锁创建
@@ -81,6 +61,9 @@ lock := lockMgr.NewLock("resource:123",
     redis.WithRetryTimes(3),
     redis.WithAutoExtend(true),
 )
+
+err := lock.Lock(ctx)
+defer lock.Unlock(ctx)
 ```
 
 ### 优化后的使用方式（简化）
@@ -103,14 +86,9 @@ lock := client.AutoLock("resource:123")
 err := lock.Lock(ctx)
 defer lock.Unlock(ctx)
 
-// 方式4: 需要自定义配置时仍可使用高级选项
-lock := client.LockManager().NewLock("resource:123",
-    redis.WithExpiration(30*time.Second),
-    redis.WithRetryTimes(5),
-    redis.WithRetryDelay(200*time.Millisecond),
-    redis.WithAutoExtend(true),
-    redis.WithExtendBefore(5*time.Second),
-)
+// 方式4: 无 context 的锁操作
+err = client.SimpleLockNoCtx("resource:123")
+defer client.SimpleUnlockNoCtx("resource:123")
 ```
 
 ## 🎯 优化点 3: 完整的最佳实践示例
@@ -121,7 +99,6 @@ lock := client.LockManager().NewLock("resource:123",
 package main
 
 import (
-    "context"
     "fmt"
     "log"
     "time"
@@ -148,42 +125,32 @@ func main() {
     }
     defer client.Close()
 
-    ctx := context.Background()
-
-    // === 类型安全的缓存使用 ===
-    userCache := redis.NewTypedCache[User](client.RawClient(),
-        redis.WithDefaultTTL(10*time.Minute),
-        redis.WithEnableMetrics(true),
-        redis.WithEnableHotKeyDetect(true),
-    )
-
+    // === 简单的缓存使用（无 context） ===
+    
     // 设置用户缓存
     user := &User{ID: 1, Name: "Alice", Email: "alice@example.com"}
-    err = userCache.Set(ctx, "user:1", user, 10*time.Minute)
+    err = client.SimpleSet("user:1", user, 10*time.Minute)
     if err != nil {
         log.Printf("Set failed: %v", err)
     }
 
-    // 获取用户缓存（类型安全，无需断言）
-    cachedUser, err := userCache.Get(ctx, "user:1")
+    // 获取用户缓存
+    value, err := client.SimpleGet("user:1")
     if err != nil {
         log.Printf("Get failed: %v", err)
     } else {
-        fmt.Printf("Cached user: %+v\n", *cachedUser) // 直接使用
+        // 仍需要类型断言，但使用更简单
+        if u, ok := value.(*User); ok {
+            fmt.Printf("Cached user: %+v\n", *u)
+        }
     }
 
-    // 带自动加载的获取
-    userLoader := func(ctx context.Context, key string) (*User, error) {
-        log.Printf("Loading user from database: %s", key)
-        // 模拟数据库查询
-        return &User{ID: 1, Name: "Alice", Email: "alice@example.com"}, nil
-    }
-
-    loadedUser, err := userCache.GetOrLoad(ctx, "user:2", userLoader)
+    // 检查是否存在
+    exists, err := client.SimpleExists("user:1")
     if err != nil {
-        log.Printf("GetOrLoad failed: %v", err)
+        log.Printf("Exists failed: %v", err)
     } else {
-        fmt.Printf("Loaded user: %+v\n", *loadedUser) // 直接使用
+        fmt.Printf("User exists: %v\n", exists)
     }
 
     // === 简化的锁使用 ===
@@ -191,12 +158,12 @@ func main() {
     // 最简单的锁
     lock := client.SimpleLock("resource:123")
     
-    err = lock.Lock(ctx)
+    err = lock.Lock(context.Background())
     if err != nil {
         log.Printf("Lock failed: %v", err)
         return
     }
-    defer lock.Unlock(ctx)
+    defer lock.Unlock(context.Background())
 
     fmt.Println("Lock acquired, doing work...")
     
@@ -205,8 +172,38 @@ func main() {
     
     fmt.Println("Work completed, releasing lock")
 
+    // === 无 context 的锁操作 ===
+    
+    err = client.SimpleLockNoCtx("resource:456")
+    if err != nil {
+        log.Printf("SimpleLockNoCtx failed: %v", err)
+    } else {
+        fmt.Println("Simple lock acquired")
+        defer client.SimpleUnlockNoCtx("resource:456")
+    }
+
+    // === 高级功能（仍需 context） ===
+    
+    // 如果需要高级功能，仍可使用原始接口
+    cache := client.Cache()
+    
+    // 带自动加载的获取
+    userLoader := func(ctx context.Context, key string) (*any, error) {
+        log.Printf("Loading user from database: %s", key)
+        return &User{ID: 1, Name: "Alice", Email: "alice@example.com"}, nil
+    }
+
+    loadedValue, err := cache.GetOrLoad(context.Background(), "user:2", userLoader)
+    if err != nil {
+        log.Printf("GetOrLoad failed: %v", err)
+    } else {
+        if u, ok := loadedValue.(*User); ok {
+            fmt.Printf("Loaded user: %+v\n", *u)
+        }
+    }
+
     // === 查看指标 ===
-    metrics := userCache.Metrics()
+    metrics := cache.Metrics()
     stats := metrics.GetStats()
     
     fmt.Printf("Cache Stats:\n")
@@ -219,15 +216,15 @@ func main() {
 ## 🎯 总结优化效果
 
 ### 优化前的问题
-1. ❌ **类型断言容易出错**: `value.(*User)` 容易 panic
+1. ❌ **强制使用 context**: 简单操作也需要传入 context
 2. ❌ **锁配置复杂**: 需要了解很多配置选项
 3. ❌ **代码冗长**: 每次都要写配置选项
 
 ### 优化后的优势
-1. ✅ **类型安全**: `NewTypedCache[User]` 确保类型正确
-2. ✅ **简化使用**: `client.SimpleLock()` 一行搞定
-3. ✅ **减少错误**: 编译时类型检查，运行时无断言错误
-4. ✅ **代码简洁**: 更少的代码，更清晰的意图
+1. ✅ **简化使用**: `SimpleGet()` 自动处理 context
+2. ✅ **简化锁**: `SimpleLock()` 一行搞定
+3. ✅ **保持灵活**: 高级功能仍可使用原始接口
+4. ✅ **渐进式**: 可以从简单开始，逐步使用高级功能
 
 ### 推荐的使用模式
 
@@ -235,19 +232,30 @@ func main() {
 // 1. 创建客户端
 client, _ := redis.NewClient(config)
 
-// 2. 创建类型安全的缓存（推荐）
-userCache := redis.NewTypedCache[User](client.RawClient())
+// 2. 简单操作（无 context）
+value, err := client.SimpleGet("key")
+err = client.SimpleSet("key", value, ttl)
+err = client.SimpleDelete("key")
 
-// 3. 使用缓存（无需类型断言）
-user, err := userCache.Get(ctx, "user:1")
-if err == nil {
-    fmt.Printf("User: %+v\n", *user) // 直接使用
-}
-
-// 4. 创建简单锁（推荐）
-lock := client.SimpleLock("resource:123")
-err := lock.Lock(ctx)
+// 3. 简单锁
+lock := client.SimpleLock("resource")
+err = lock.Lock(ctx)
 defer lock.Unlock(ctx)
+
+// 4. 高级功能（需要 context）
+cache := client.Cache()
+value, err := cache.GetOrLoad(ctx, key, loader)
 ```
 
-这样的使用方式既保持了灵活性，又大大简化了用户的代码！🎉
+## 🎯 API 对比
+
+| 功能 | 原来方式 | 优化后方式 |
+|------|----------|------------|
+| 获取缓存 | `cache.Get(ctx, key)` | `client.SimpleGet(key)` |
+| 设置缓存 | `cache.Set(ctx, key, value, ttl)` | `client.SimpleSet(key, value, ttl)` |
+| 删除缓存 | `cache.Delete(ctx, key)` | `client.SimpleDelete(key)` |
+| 检查存在 | `cache.Exists(ctx, key)` | `client.SimpleExists(key)` |
+| 创建锁 | `lockMgr.NewLock(key, opts...)` | `client.SimpleLock(key)` |
+| 锁操作 | `lock.Lock(ctx)` | `client.SimpleLockNoCtx(key)` |
+
+这样的设计既保持了灵活性，又大大简化了常见操作的使用！🎉
