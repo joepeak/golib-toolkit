@@ -117,6 +117,47 @@ func (c *Client) SimpleExists(key string) (bool, error) {
 	return c.cache.Exists(context.Background(), key)
 }
 
+// SimpleGetOrLoad 简单的带自动加载获取（无context，类型安全）
+func (c *Client) SimpleGetOrLoad(key string, valueType any, loader func(string) (any, error)) (any, error) {
+	// 先尝试获取缓存
+	value, err := c.cache.Get(context.Background(), key)
+	if err == nil {
+		// 如果缓存命中，尝试类型转换
+		if valueType != nil {
+			if reflect.TypeOf(valueType).Kind() == reflect.Ptr {
+				newValue := reflect.New(reflect.TypeOf(valueType).Elem()).Interface()
+				if err := mapstructure.Decode(value, newValue); err == nil {
+					return newValue, nil
+				}
+			}
+		}
+		return value, nil
+	}
+
+	// 缓存未命中，调用加载函数
+	loadedValue, err := loader(key)
+	if err != nil {
+		return nil, err
+	}
+
+	// 缓存加载的值
+	if err := c.cache.Set(context.Background(), key, &loadedValue, 10*time.Minute); err != nil {
+		// 记录错误但不影响返回
+	}
+
+	// 尝试类型转换
+	if valueType != nil {
+		if reflect.TypeOf(valueType).Kind() == reflect.Ptr {
+			newValue := reflect.New(reflect.TypeOf(valueType).Elem()).Interface()
+			if err := mapstructure.Decode(loadedValue, newValue); err == nil {
+				return newValue, nil
+			}
+		}
+	}
+
+	return loadedValue, nil
+}
+
 // SimpleLock 简单获取锁（无context）
 func (c *Client) SimpleLockNoCtx(key string) error {
 	lock := c.SimpleLock(key)

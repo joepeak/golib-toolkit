@@ -178,24 +178,20 @@ func main() {
         defer client.SimpleUnlockNoCtx("resource:456")
     }
 
-    // === 高级功能（仍需 context） ===
+    // === 高级功能（无 context，类型安全） ===
     
-    // 如果需要高级功能，仍可使用原始接口
-    cache := client.Cache()
-    
-    // 带自动加载的获取
-    userLoader := func(ctx context.Context, key string) (*any, error) {
+    // 带自动加载的获取（类型安全）
+    userLoader := func(key string) (any, error) {
         log.Printf("Loading user from database: %s", key)
         return &User{ID: 1, Name: "Alice", Email: "alice@example.com"}, nil
     }
 
-    loadedValue, err := cache.GetOrLoad(context.Background(), "user:2", userLoader)
+    loadedValue, err := client.SimpleGetOrLoad("user:2", &User{}, userLoader)
     if err != nil {
-        log.Printf("GetOrLoad failed: %v", err)
+        log.Printf("SimpleGetOrLoad failed: %v", err)
     } else {
-        if u, ok := loadedValue.(*User); ok {
-            fmt.Printf("Loaded user: %+v\n", *u)
-        }
+        // 无需类型断言，直接使用
+        fmt.Printf("Loaded user: %+v\n", loadedValue.(*User))
     }
 
     // === 查看指标 ===
@@ -248,6 +244,7 @@ value, err := cache.GetOrLoad(ctx, key, loader)
 | 功能 | 原来方式 | 优化后方式 | 类型安全 |
 |------|----------|------------|----------|
 | 获取缓存 | `cache.Get(ctx, key)` | `client.SimpleGet(key, &Type{})` | ✅ 类型安全 |
+| 自动加载 | `cache.GetOrLoad(ctx, key, loader)` | `client.SimpleGetOrLoad(key, &Type{}, loader)` | ✅ 类型安全 |
 | 设置缓存 | `cache.Set(ctx, key, value, ttl)` | `client.SimpleSet(key, value, ttl)` | ✅ 简化 |
 | 删除缓存 | `cache.Delete(ctx, key)` | `client.SimpleDelete(key)` | ✅ 简化 |
 | 检查存在 | `cache.Exists(ctx, key)` | `client.SimpleExists(key)` | ✅ 简化 |
@@ -265,10 +262,22 @@ if err == nil {
     }
 }
 
+loadedValue, err := cache.GetOrLoad(ctx, "user:2", userLoader)
+if err == nil {
+    if u, ok := loadedValue.(*User); ok {  // 容易出错
+        fmt.Printf("Loaded user: %+v\n", *u)
+    }
+}
+
 // ✅ 现在类型安全
 value, err := client.SimpleGet("user:1", &User{})
 if err == nil {
     fmt.Printf("User: %+v\n", value.(*User))  // 无需断言
+}
+
+loadedValue, err := client.SimpleGetOrLoad("user:2", &User{}, userLoader)
+if err == nil {
+    fmt.Printf("Loaded user: %+v\n", loadedValue.(*User))  // 无需断言
 }
 ```
 
