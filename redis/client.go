@@ -4,8 +4,10 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"reflect"
 	"time"
 
+	"github.com/mitchellh/mapstructure"
 	"github.com/redis/go-redis/v9"
 	"github.com/spf13/viper"
 )
@@ -78,9 +80,26 @@ func (c *Client) AutoLock(key string) DistributedLock {
 	)
 }
 
-// SimpleGet 简单获取缓存（无context）
-func (c *Client) SimpleGet(key string) (any, error) {
-	return c.cache.Get(context.Background(), key)
+// SimpleGet 简单获取缓存（无context，类型安全）
+func (c *Client) SimpleGet(key string, valueType any) (any, error) {
+	value, err := c.cache.Get(context.Background(), key)
+	if err != nil {
+		return nil, err
+	}
+	
+	// 如果用户传入了类型示例，尝试类型转换
+	if valueType != nil {
+		// 使用反射进行类型转换
+		if reflect.TypeOf(valueType).Kind() == reflect.Ptr {
+			// 创建新的类型实例
+			newValue := reflect.New(reflect.TypeOf(valueType).Elem()).Interface()
+			if err := mapstructure.Decode(value, newValue); err == nil {
+				return newValue, nil
+			}
+		}
+	}
+	
+	return value, nil
 }
 
 // SimpleSet 简单设置缓存（无context）

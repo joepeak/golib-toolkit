@@ -21,7 +21,7 @@ err = lock.Lock(ctx)
 defer lock.Unlock(ctx)
 ```
 
-### 优化后的使用方式（无 context）
+### 优化后的使用方式（无 context，类型安全）
 
 ```go
 // ✅ 无 context 的用法（推荐）
@@ -30,14 +30,12 @@ client, _ := redis.NewClient(&redis.RedisConfig{
 })
 
 // 简单的缓存操作（自动使用 context.Background()）
-value, err := client.SimpleGet("user:1")
+value, err := client.SimpleGet("user:1", &User{})
 if err != nil {
     log.Printf("Get failed: %v", err)
 } else {
-    // 仍需要类型断言，但代码更简洁
-    if u, ok := value.(*User); ok {
-        fmt.Printf("User: %+v\n", *u)
-    }
+    // 无需类型断言，直接使用
+    fmt.Printf("User: %+v\n", value.(*User))
 }
 
 // 设置缓存
@@ -134,15 +132,13 @@ func main() {
         log.Printf("Set failed: %v", err)
     }
 
-    // 获取用户缓存
-    value, err := client.SimpleGet("user:1")
+    // 获取用户缓存（类型安全）
+    value, err := client.SimpleGet("user:1", &User{})
     if err != nil {
         log.Printf("Get failed: %v", err)
     } else {
-        // 仍需要类型断言，但使用更简单
-        if u, ok := value.(*User); ok {
-            fmt.Printf("Cached user: %+v\n", *u)
-        }
+        // 无需类型断言，直接使用
+        fmt.Printf("Cached user: %+v\n", value.(*User))
     }
 
     // 检查是否存在
@@ -249,13 +245,31 @@ value, err := cache.GetOrLoad(ctx, key, loader)
 
 ## 🎯 API 对比
 
-| 功能 | 原来方式 | 优化后方式 |
-|------|----------|------------|
-| 获取缓存 | `cache.Get(ctx, key)` | `client.SimpleGet(key)` |
-| 设置缓存 | `cache.Set(ctx, key, value, ttl)` | `client.SimpleSet(key, value, ttl)` |
-| 删除缓存 | `cache.Delete(ctx, key)` | `client.SimpleDelete(key)` |
-| 检查存在 | `cache.Exists(ctx, key)` | `client.SimpleExists(key)` |
-| 创建锁 | `lockMgr.NewLock(key, opts...)` | `client.SimpleLock(key)` |
-| 锁操作 | `lock.Lock(ctx)` | `client.SimpleLockNoCtx(key)` |
+| 功能 | 原来方式 | 优化后方式 | 类型安全 |
+|------|----------|------------|----------|
+| 获取缓存 | `cache.Get(ctx, key)` | `client.SimpleGet(key, &Type{})` | ✅ 类型安全 |
+| 设置缓存 | `cache.Set(ctx, key, value, ttl)` | `client.SimpleSet(key, value, ttl)` | ✅ 简化 |
+| 删除缓存 | `cache.Delete(ctx, key)` | `client.SimpleDelete(key)` | ✅ 简化 |
+| 检查存在 | `cache.Exists(ctx, key)` | `client.SimpleExists(key)` | ✅ 简化 |
+| 创建锁 | `lockMgr.NewLock(key, opts...)` | `client.SimpleLock(key)` | ✅ 大幅简化 |
+| 锁操作 | `lock.Lock(ctx)` | `client.SimpleLockNoCtx(key)` | ✅ 简化 |
+
+### 使用对比
+
+```go
+// ❌ 原来需要类型断言
+value, err := cache.Get(ctx, "user:1")
+if err == nil {
+    if u, ok := value.(*User); ok {  // 容易出错
+        fmt.Printf("User: %+v\n", *u)
+    }
+}
+
+// ✅ 现在类型安全
+value, err := client.SimpleGet("user:1", &User{})
+if err == nil {
+    fmt.Printf("User: %+v\n", value.(*User))  // 无需断言
+}
+```
 
 这样的设计既保持了灵活性，又大大简化了常见操作的使用！🎉
